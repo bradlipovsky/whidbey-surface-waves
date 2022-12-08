@@ -1,7 +1,3 @@
-#!/bin/sh
-export PATH=$HOME/PROGRAMS.330/bin:$PATH
-
-cat > model.d << EOF 
 MODEL 
 TEST MODEL 
 ISOTROPIC 
@@ -18,25 +14,3 @@ HR    VP    VS    RHO   QP  QS  ETAP ETAS FREFP FREFS
 0.020 1.600 0.045 1.500 0.0 0.0 0.0  0.0  1.0   1.0
 0.020 1.250 0.100 1.500 0.0 0.0 0.0  0.0  1.0   1.0
 0.000 1.600 4.300 1.500 0.0 0.0 0.0  0.0  1.0   1.0
-EOF
-
-cat > freqdata << EOF
-0.1
-0.2
-0.3
-0.4
-0.5
-0.6
-0.7
-0.8
-0.9
-1.0
-1.1
-1.2
-1.3
-1.4
-EOF
-
-sprep96 -M model.d -R -FARR freqdata
-sdisp96 
-sdpsrf96 -R -TXT
