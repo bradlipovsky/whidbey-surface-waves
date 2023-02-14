@@ -5,7 +5,8 @@ import pickle
 import pandas as pd
 import subprocess
 import numpy as np
-
+import matplotlib.pyplot as plt
+from scipy.stats import linregress
 
 def pysurf96(hr,vp,vs,rho,model_file='model-from-python.d'):
 
@@ -33,8 +34,23 @@ def pysurf96(hr,vp,vs,rho,model_file='model-from-python.d'):
     result = subprocess.run(['./model.sh'], stdout=subprocess.PIPE)
     
     data=pd.read_fwf('SDISPR.TXT',header=1,colspecs=[(22,34),(38,52)])
-    f = data['FREQ']
-    k = data['FREQ']/data['PHASE VEL']/1e3
+
+    '''
+    It's a bit messy, but the following parses the 0th and 1st scholte mode from the output file.
+    '''
+    N0=12
+    N1=6
+
+    f0 = np.array(data['FREQ'][0:N0].astype(float))
+    c0 = np.array(data['PHASE VEL'][0:N0].astype(float)*1e3)
+    k0 = f0/c0
+
+    f1 = np.array(data['FREQ'][N0+2:N0+2+N1].astype(float))
+    c1 = np.array(data['PHASE VEL'][N0+2:N0+2+N1].astype(float)*1e3)
+    k1 = f1/c1
+
+    f = [f0,f1]
+    k = [k0,k1]
     return f,k
 
 def wrap_four_layer(p,h,k_obs,
@@ -139,16 +155,22 @@ def plt_dispersion(f,k,fobs,kobs,z,vs,save=False):
     plt.xlim([0, 650])
 
     plt.subplot(122)
-    plt.plot(k,f,'-o',label='Model',markersize=12)
-    plt.plot( kobs , fobs, 'o' , label='Observation',markersize=10)
+    ind = 0
+    for kk,ff in zip(k,f):
+        plt.plot(kk,ff,'-o',label=f'Model Mode {ind}',markersize=12)
+        ind = ind+1
+    ind = 0
+    for kk,ff in zip(kobs,fobs):
+        plt.plot( kk , ff, 'o' , label=f'Obs. Mode {ind}',markersize=10)
+        ind = ind+1
     plt.ylabel('Frequency (Hz)',fontsize=22)
     plt.xlabel(r'Ordinary Wavenumber, $1/\lambda$ (1/m)',fontsize=22)
 
     
-    fit = linregress(kobs,fobs)
-    plt.plot(kobs, fit.slope*kobs + fit.intercept,'--',label=f'Constant vg ({fit.slope:.0f} m/s)')
-    print(fit.slope)
-    print(fit.intercept)
+#     fit = linregress(kobs,fobs)
+#     plt.plot(kobs, fit.slope*kobs + fit.intercept,'--',label=f'Constant vg ({fit.slope:.0f} m/s)')
+#     print(fit.slope)
+#     print(fit.intercept)
     plt.legend(fontsize=18)
     plt.grid()
     if save:
