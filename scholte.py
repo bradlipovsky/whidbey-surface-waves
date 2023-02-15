@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import linregress
 
-def pysurf96(hr,vp,vs,rho,model_file='model-from-python.d'):
+def pysurf96(hr,vp,vs,rho,model_file='model-from-python.d',N0 = 18, N1 = 15):
 
     lines = ['MODEL',
              'TEST MODEL',
@@ -22,6 +22,7 @@ def pysurf96(hr,vp,vs,rho,model_file='model-from-python.d'):
             'LINE10',
             'LINE11',
             'HR    VP    VS    RHO   QP  QS  ETAP ETAS FREFP FREFS']
+    
     for h,p,s,r in zip(hr,vp,vs,rho):
 #         lines.append(f'{h:.3f} {p:.3f} {s:.3f} {r:.3f}  0.0 0.0 0.0  0.0  1.0   1.0')
         lines.append(f'{h} {p} {s} {r}  0.0 0.0 0.0  0.0  1.0   1.0')
@@ -35,22 +36,24 @@ def pysurf96(hr,vp,vs,rho,model_file='model-from-python.d'):
     
     data=pd.read_fwf('SDISPR.TXT',header=1,colspecs=[(22,34),(38,52)])
 
-    '''
-    It's a bit messy, but the following parses the 0th and 1st scholte mode from the output file.
-    '''
-    N0=12
-    N1=6
+    f = []
+    f_this_mode = []
+    k = []
+    k_this_mode = []
+    for this_c,this_f in zip(data['PHASE VEL'],data['FREQ']):
 
-    f0 = np.array(data['FREQ'][0:N0].astype(float))
-    c0 = np.array(data['PHASE VEL'][0:N0].astype(float)*1e3)
-    k0 = f0/c0
-
-    f1 = np.array(data['FREQ'][N0+2:N0+2+N1].astype(float))
-    c1 = np.array(data['PHASE VEL'][N0+2:N0+2+N1].astype(float)*1e3)
-    k1 = f1/c1
-
-    f = [f0,f1]
-    k = [k0,k1]
+        if this_f == 'EIGH WAVE':
+            continue
+        elif this_f == 'FREQ':
+            f.append( np.array(f_this_mode) )
+            f_this_mode = []
+            k.append( np.array(k_this_mode) )
+            k_this_mode = []
+        else:
+            f_this_mode.append(float(this_f))
+            k_this_mode.append(float(this_f)/float(this_c)/1000)
+    f.append( np.array(f_this_mode) )
+    k.append( np.array(k_this_mode) )
     return f,k
 
 def wrap_four_layer(p,h,k_obs,
