@@ -65,11 +65,14 @@ def wrap_four_layer(p,h,k_obs, f_obs,
     f,k = pysurf96(h,vp,this_vs,rho)
     
     misfit = 0
+    n = 0
     for fm_mode,km_mode,fo_mode,ko_mode in zip(f,k,f_obs,k_obs):
         # Loop over the different Scholte wave modes
         if len(km_mode) < 2:
-            # surf96 failed?
-            return np.Inf
+            # surf96 failed? Don't use this mode.
+            continue
+        else:
+            n = n + len(km_mode)
         f_interp = interp1d(km_mode,fm_mode)
         # index to account for the fact that surf96 may not have found
         # the dispersion curve where we have observations -- only analyze
@@ -77,10 +80,11 @@ def wrap_four_layer(p,h,k_obs, f_obs,
         index = (min(km_mode) < ko_mode) & (ko_mode < max(km_mode))
         f_model = f_interp(ko_mode[index])
         misfit = misfit + np.abs(f_model - fo_mode[index]).sum()
+    misfit = misfit / n # divide to arrive at the mean absolute error
 
     return misfit
     
-def do_mcmc_8param(kobs, fobs, h0, x0,
+def do_mcmc_8param(kobs, fobs, h, x0,
                     N = 200000, 
                     filename='100k_4param_MCMC.pickle',
                     fixhalfspace=True,
@@ -88,38 +92,88 @@ def do_mcmc_8param(kobs, fobs, h0, x0,
                     restartfile=None,
                     step_size = 1.0e-4, # 0.1 m/s
                     step_size_h = 0.01e-3, # 0.01 m
-                    f_sensitivity = 1e-3
+                    f_sensitivity = 1e-3,
+                   verbose=False
                   ):
     
     t0 = perf_counter()
     
-    misfit0 = wrap_four_layer(x0,h0,kobs,fobs)
+    misfit0 = wrap_four_layer(x0,h,kobs,fobs)
     L0 =  -misfit0**2 / f_sensitivity**2
-
+    
+    if verbose: print(f'Probability of initial model = {np.exp(L0)}')
+    if verbose: print(f'misfit0 = {misfit0}')
+        
     x_list = []
     for i in tqdm(range(N)):
-#         x = x0 + step_size*(2*random_sample(len(x0))-1)
         x = x0 + np.random.default_rng().normal(0, step_size, len(x0))
-        
-        if fixhalfspace:
-            x[3]=x0[3]
-            
-        if not fixdepths:
-            return np.Nan # not implemented yet
-            h = h0 + step_size_h*(2*random_sample(len(h0))-1)
-            h[-1]=0
-        else:
-            h=h0
             
         misfit = wrap_four_layer(x,h,kobs,fobs)
-        L =  -misfit**2 / f_sensitivity**2
-        alpha = np.exp(L-L0)
+        Lp =  -misfit**2 / f_sensitivity**2
+        alpha = np.exp(Lp)/np.exp(L0)
+#         alpha = np.exp(Lp-L0)
         u = random_sample()
-        if alpha > u: # accept the proposition
-            x_list.append( np.hstack((h0,x0)) )
+        if verbose: print(f'alpha={alpha},  u={u}')
+        if  alpha > u: # accept the proposition
+            
+            x_list.append( x )
             x0 = x
-            h0 = h
             misfit0 = misfit
+            
+            
+    x_list = np.array(x_list) * 1e3
+    print(f'Runtime was {perf_counter()-t0}')
+    print(f'Acceptances = {len(x_list)}, Acceptance Ratio = {len(x_list)/N}')
+    
+    if restartfile is not None:
+        x_list_old = pickle.load(open(restartfile, 'rb'))
+        x_list = np.vstack((x_list_old,x_list))
+    
+    with open(filename, 'wb') as handle:
+        pickle.dump(x_list, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        
+def do_mcmc_8param_one_step_per_variable(kobs, fobs, h, x0,
+                    N = 200000, 
+                    filename='100k_4param_MCMC.pickle',
+                    restartfile=None,
+                    step_size = 1.0e-4, # 0.1 m/s
+                    step_size_h = 0.01e-3, # 0.01 m
+                    f_sensitivity = 1e-3,
+                   verbose=False
+                  ):
+    
+    t0 = perf_counter()
+    
+    misfit0 = wrap_four_layer(x0,h,kobs,fobs)
+    L0 =  -misfit0**2 / f_sensitivity**2
+    if verbose: print(f'L0 = {L0}')
+    if verbose: print(f'misfit0 = {misfit0}')
+        
+    x_list = []
+    for i in tqdm(range(N)):
+
+        xp = x0
+        at_least_one_accept = False
+        for j in range(len(x0)):
+            xp[j] = xp[j] + np.random.default_rng().normal(0, step_size, 1)
+            
+            misfit = wrap_four_layer(xp,h,kobs,fobs)
+            L =  -misfit**2 / f_sensitivity**2
+            alpha = np.exp(L-L0)
+            u = random_sample()
+
+            if alpha > u: 
+                # accept the proposition
+                at_least_one_accept = True
+            else:
+                xp[j] = x0[j]
+        if at_least_one_accept:
+            x_list.append( xp )
+            x0 = xp
+            misfit0 = misfit
+            
+            
     x_list = np.array(x_list) * 1e3
     print(f'Runtime was {perf_counter()-t0}')
     
@@ -129,7 +183,8 @@ def do_mcmc_8param(kobs, fobs, h0, x0,
     
     with open(filename, 'wb') as handle:
         pickle.dump(x_list, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    
+        
+        
 def exp_vs(z,z0,exp,coeff):
     return (coeff*(z - z0))**exp
 
