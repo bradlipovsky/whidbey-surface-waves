@@ -205,3 +205,5 @@ def load_dispersion_observations():
     fobs = [fobs0_manual,fobs1_manual,fobs2_manual]
     
     return kobs,fobs
+
+
