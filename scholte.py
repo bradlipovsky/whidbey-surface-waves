@@ -57,12 +57,11 @@ def pysurf96(hr,vp,vs,rho,model_file='model-from-python.d',N0 = 18, N1 = 15):
     k.append( np.array(k_this_mode) )
     return f,k
 
-def wrap_four_layer(p,h,k_obs, f_obs,
+def function_wrapper(vs,h,k_obs, f_obs,
                         vp = [1.5,1.6,1.6,1.6,1.6], 
                         rho= [1,1.5,1.5,1.5,1.5]  ):
 
-    this_vs = [0,p[0],p[1],p[2],p[3]]
-    f,k = pysurf96(h,vp,this_vs,rho)
+    f,k = pysurf96(h,vp,vs,rho)
     
     misfit = 0
     n = 0
@@ -84,21 +83,22 @@ def wrap_four_layer(p,h,k_obs, f_obs,
 
     return misfit
     
-def do_mcmc_8param(kobs, fobs, h, x0,
+def do_mcmc( kobs, fobs, h, x0,
                     N = 200000, 
-                    filename='100k_4param_MCMC.pickle',
+                    filename='test.pickle',
                     fixhalfspace=True,
                     fixdepths=True,
+                    fix_water_layer=True,
                     restartfile=None,
                     step_size = 1.0e-4, # 0.1 m/s
                     step_size_h = 0.01e-3, # 0.01 m
                     f_sensitivity = 1e-3,
-                   verbose=False
+                    verbose=False
                   ):
     
     t0 = perf_counter()
     
-    misfit0 = wrap_four_layer(x0,h,kobs,fobs)
+    misfit0 = function_wrapper(x0,h,kobs,fobs)
     L0 =  -misfit0**2 / f_sensitivity**2
     
     if verbose: print(f'Probability of initial model = {np.exp(L0)}')
@@ -107,8 +107,9 @@ def do_mcmc_8param(kobs, fobs, h, x0,
     x_list = []
     for i in tqdm(range(N)):
         x = x0 + np.random.default_rng().normal(0, step_size, len(x0))
+        if fix_water_layer: x[0]=0 # zero shear wave speed in a water layer
             
-        misfit = wrap_four_layer(x,h,kobs,fobs)
+        misfit = function_wrapper(x,h,kobs,fobs)
         Lp =  -misfit**2 / f_sensitivity**2
         alpha = np.exp(Lp)/np.exp(L0)
 #         alpha = np.exp(Lp-L0)
@@ -133,62 +134,6 @@ def do_mcmc_8param(kobs, fobs, h, x0,
         pickle.dump(x_list, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         
-def do_mcmc_8param_one_step_per_variable(kobs, fobs, h, x0,
-                    N = 200000, 
-                    filename='100k_4param_MCMC.pickle',
-                    restartfile=None,
-                    step_size = 1.0e-4, # 0.1 m/s
-                    step_size_h = 0.01e-3, # 0.01 m
-                    f_sensitivity = 1e-3,
-                   verbose=False
-                  ):
-    
-    t0 = perf_counter()
-    
-    misfit0 = wrap_four_layer(x0,h,kobs,fobs)
-    L0 =  -misfit0**2 / f_sensitivity**2
-    if verbose: print(f'L0 = {L0}')
-    if verbose: print(f'misfit0 = {misfit0}')
-        
-    x_list = []
-    for i in tqdm(range(N)):
-
-        xp = x0
-        at_least_one_accept = False
-        for j in range(len(x0)):
-            xp[j] = xp[j] + np.random.default_rng().normal(0, step_size, 1)
-            
-            misfit = wrap_four_layer(xp,h,kobs,fobs)
-            L =  -misfit**2 / f_sensitivity**2
-            alpha = np.exp(L-L0)
-            u = random_sample()
-
-            if alpha > u: 
-                # accept the proposition
-                at_least_one_accept = True
-            else:
-                xp[j] = x0[j]
-        if at_least_one_accept:
-            x_list.append( xp )
-            x0 = xp
-            misfit0 = misfit
-            
-            
-    x_list = np.array(x_list) * 1e3
-    print(f'Runtime was {perf_counter()-t0}')
-    
-    if restartfile is not None:
-        x_list_old = pickle.load(open(restartfile, 'rb'))
-        x_list = np.vstack((x_list_old,x_list))
-    
-    with open(filename, 'wb') as handle:
-        pickle.dump(x_list, handle, protocol=pickle.HIGHEST_PROTOCOL)
-        
-        
-def exp_vs(z,z0,exp,coeff):
-    return (coeff*(z - z0))**exp
-
-
 
         
 def load_dispersion_observations():
